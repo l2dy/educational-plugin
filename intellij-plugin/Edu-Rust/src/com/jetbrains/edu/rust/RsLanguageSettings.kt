@@ -21,7 +21,9 @@ import javax.swing.JComponent
 
 class RsLanguageSettings : LanguageSettings<RsProjectSettings>() {
 
-  private var toolchainComboBox: RsToolchainPathChoosingComboBox? = null
+  private val toolchainComboBox: RsToolchainPathChoosingComboBox by lazy {
+    RsToolchainPathChoosingComboBox { updateToolchain() }
+  }
 
   private var loadingFinished: Boolean = false
 
@@ -34,24 +36,21 @@ class RsLanguageSettings : LanguageSettings<RsProjectSettings>() {
     disposable: CheckedDisposable,
     context: UserDataHolder?
   ): List<LabeledComponent<JComponent>> {
-    val comboBox = RsToolchainPathChoosingComboBox(disposable, ::updateToolchain)
-    Disposer.register(disposable, comboBox)
-    comboBox.addToolchainsAsync(::findAllToolchainsPath) {
+    Disposer.register(disposable, toolchainComboBox)
+    toolchainComboBox.addToolchainsAsync(::findAllToolchainsPath) {
       loadingFinished = true
       if (disposable.isDisposed) return@addToolchainsAsync
       // `RsToolchainPathChoosingComboBox` sets initial empty text after addition of all items
       // But we want to show text of selected item
-      val combobox = comboBox.childComponent
+      val combobox = toolchainComboBox.childComponent
       val selectedItem = combobox.selectedItem
       if (selectedItem is Path) {
-        comboBox.selectedPath = selectedItem
+        toolchainComboBox.selectedPath = selectedItem
       }
       updateToolchain()
     }
 
-    toolchainComboBox = comboBox
-
-    return listOf<LabeledComponent<JComponent>>(LabeledComponent.create(comboBox, EduRustBundle.message("toolchain.label.text"), BorderLayout.WEST))
+    return listOf<LabeledComponent<JComponent>>(LabeledComponent.create(toolchainComboBox, EduRustBundle.message("toolchain.label.text"), BorderLayout.WEST))
   }
 
   private fun findAllToolchainsPath(): List<Path> {
@@ -63,12 +62,13 @@ class RsLanguageSettings : LanguageSettings<RsProjectSettings>() {
     // Unfortunately, `RsToolchainPathChoosingComboBox` changes its text before final callback is called
     // To avoid unexpected updates of toolchain, just skip all changes before call of final callback
     if (!loadingFinished) return
-    val toolchainPath = toolchainComboBox?.selectedPath
-    // We already have toolchain for this path
-    if (rustToolchain?.location == toolchainPath) return
+    val toolchainPath = toolchainComboBox.selectedPath
+    if (toolchainPath != null) {
+      // We already have toolchain for this path
+      if (rustToolchain?.location == toolchainPath) return
 
-    rustToolchain = toolchainPath?.let { RsToolchainProvider.getToolchain(it) }
-
+      rustToolchain = RsToolchainProvider.getToolchain(toolchainPath)
+    }
     notifyListeners()
   }
 
